@@ -1,0 +1,61 @@
+name: Build Win-FG Ubuntu ARM64 glibc
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-glibc-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ glslang-tools python3 libvulkan-dev vulkan-headers
+
+      - name: Patch Android log calls for Linux glibc
+        run: |
+          cat << 'EOF' > src/android_log_stub.h
+          #pragma once
+          #include <cstdio>
+          #define ANDROID_LOG_DEBUG 3
+          #define ANDROID_LOG_INFO 4
+          #define ANDROID_LOG_WARN 5
+          #define ANDROID_LOG_ERROR 6
+          #define __android_log_print(prio, tag, fmt, ...) fprintf(stderr, "[%s] " fmt "\n", tag, ##__VA_ARGS__)
+          EOF
+          sed -i 's|#include <android/log.h>|#include "android_log_stub.h"|g' src/*.cpp src/*.hpp src/*.inc 2>/dev/null || true
+          sed -i 's|VK_USE_PLATFORM_ANDROID_KHR||g' CMakeLists.txt
+
+      - name: Build SPIR-V shaders
+        run: |
+          chmod +x tools/build_shaders.sh
+          ./tools/build_shaders.sh
+
+      - name: Configure and Compile libwin_fg.so
+        run: |
+          mkdir -p build && cd build
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVULKAN_INCLUDE=/usr/include \
+            ..
+          ninja
+
+      - name: Package artifacts
+        run: |
+          mkdir -p dist
+          cp build/libwin_fg.so dist/
+          cp manifest/VkLayer_win_framegen.json dist/ || true
+
+      - name: Upload libwin_fg.so zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-fg-ubuntu-arm64-glibc
+          path: dist/
