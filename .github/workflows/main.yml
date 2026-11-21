@@ -18,7 +18,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ glslang-tools python3 libvulkan-dev vulkan-headers
+          sudo apt-get install -y cmake ninja-build g++ glslang-tools python3 libvulkan-dev
 
       - name: Patch Android log calls for Linux glibc
         run: |
