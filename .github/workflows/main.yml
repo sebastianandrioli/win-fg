@@ -20,7 +20,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ glslang-tools python3 libvulkan-dev
 
-      - name: Patch Android log calls for Linux glibc
+      - name: Patch Android log calls and smooth half-frame cadence
         run: |
           cat << 'EOF' > src/android_log_stub.h
           #pragma once
@@ -33,6 +33,17 @@ jobs:
           EOF
           sed -i 's|#include <android/log.h>|#include "android_log_stub.h"|g' src/*.cpp src/*.hpp src/*.inc 2>/dev/null || true
           sed -i 's|VK_USE_PLATFORM_ANDROID_KHR||g' CMakeLists.txt
+          python3 -c '
+          with open("src/layer.cpp", "r") as f:
+              code = f.read()
+          code = code.replace("0.35f, fcIdx", "0.5f, fcIdx")
+          target = "VkResult pg = presentOne(fc.genSem, spareIdx, nullptr);"
+          patch = target + "\n                if (!st->cfg.pacing && dtNs > 0) { uint64_t half = dtNs / 2; if (half > 16000000ull) half = 16000000ull; sleep_until_ns(mono_ns() + half); }"
+          assert target in code, "target not found"
+          code = code.replace(target, patch, 1)
+          with open("src/layer.cpp", "w") as f:
+              f.write(code)
+          '
 
       - name: Build SPIR-V shaders
         run: |
